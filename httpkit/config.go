@@ -1,8 +1,12 @@
 package httpkit
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"time"
 )
@@ -22,6 +26,8 @@ type Config struct {
 	ReadTimeout     time.Duration
 	WriteTimeout    time.Duration
 	ShutdownTimeout time.Duration
+	TLS             *tls.Config
+	tlsErr          error
 }
 
 func DefaultConfig() Config {
@@ -85,6 +91,10 @@ func (c *Config) Validate() error {
 		return errors.New("shutdown timeout must be greater than 0")
 	}
 
+	if c.TLS != nil && c.tlsErr != nil {
+		return fmt.Errorf("tls must be configured correctly if provided: %w", c.tlsErr)
+	}
+
 	return nil
 }
 
@@ -119,8 +129,14 @@ type (
 	readTimeoutOption     struct{ value time.Duration }
 	writeTimeoutOption    struct{ value time.Duration }
 	shutdownTimeoutOption struct{ value time.Duration }
-	configOption          struct{ value Config }
-	configOptions         struct{ value []ConfigOption }
+
+	tlsOption struct {
+		value *tls.Config
+		err   error
+	}
+
+	configOption  struct{ value Config }
+	configOptions struct{ value []ConfigOption }
 )
 
 func WithHost(v string) ConfigOption                   { return hostOption{value: v} }
@@ -132,12 +148,38 @@ func WithShutdownTimeout(v time.Duration) ConfigOption { return shutdownTimeoutO
 func WithConfig(v Config) ConfigOption                 { return configOption{value: v} }
 func WithConfigOptions(v ...ConfigOption) ConfigOption { return configOptions{value: v} }
 
+func WithTLS(caFile, ceFile, keyFile string) ConfigOption {
+	ce, err := tls.LoadX509KeyPair(ceFile, keyFile)
+	if err != nil {
+		return tlsOption{err: err}
+	}
+
+	ca, err := os.ReadFile(caFile)
+	if err != nil {
+		return tlsOption{err: err}
+	}
+
+	pool := x509.NewCertPool()
+	if ok := pool.AppendCertsFromPEM(ca); !ok {
+		return tlsOption{err: errors.New("unable to append certs from PEM")}
+	}
+
+	return tlsOption{
+		value: &tls.Config{
+			ClientAuth:   tls.RequireAndVerifyClientCert,
+			Certificates: []tls.Certificate{ce},
+			ClientCAs:    pool,
+		},
+	}
+}
+
 func (o hostOption) applyToConfig(cfg *Config)            { cfg.Host = o.value }
 func (o portOption) applyToConfig(cfg *Config)            { cfg.Port = o.value }
 func (o idleTimeoutOption) applyToConfig(cfg *Config)     { cfg.IdleTimeout = o.value }
 func (o readTimeoutOption) applyToConfig(cfg *Config)     { cfg.ReadTimeout = o.value }
 func (o writeTimeoutOption) applyToConfig(cfg *Config)    { cfg.WriteTimeout = o.value }
 func (o shutdownTimeoutOption) applyToConfig(cfg *Config) { cfg.ShutdownTimeout = o.value }
+func (o tlsOption) applyToConfig(cfg *Config)             { cfg.TLS, cfg.tlsErr = o.value, o.err }
 func (o configOption) applyToConfig(cfg *Config)          { cfg.Override(o.value) }
 func (o configOptions) applyToConfig(cfg *Config) {
 	for _, opt := range o.value {

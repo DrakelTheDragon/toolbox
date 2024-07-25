@@ -27,13 +27,14 @@ func Serve(ctx context.Context, h http.Handler, opts ...ConfigOption) error {
 		IdleTimeout:  cfg.IdleTimeout,
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
+		TLSConfig:    cfg.TLS,
 	}
 
 	eg, egCtx, stop := withErrGroupNotifyContext(ctx)
 	defer stop()
 
 	eg.Go(func() error {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := open(srv); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 		return nil
@@ -53,4 +54,11 @@ func withErrGroupNotifyContext(ctx context.Context) (*errgroup.Group, context.Co
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	eg, ctx := errgroup.WithContext(ctx)
 	return eg, ctx, cancel
+}
+
+func open(srv *http.Server) error {
+	if srv.TLSConfig != nil {
+		return srv.ListenAndServeTLS("", "")
+	}
+	return srv.ListenAndServe()
 }
