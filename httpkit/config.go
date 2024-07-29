@@ -169,6 +169,8 @@ func WithTLS(caFile, ceFile, keyFile string) ConfigOption {
 			ClientAuth:   tls.RequireAndVerifyClientCert,
 			Certificates: []tls.Certificate{ce},
 			ClientCAs:    pool,
+			MinVersion:   tls.VersionTLS12,
+			NextProtos:   []string{"h2", "http/1.1"},
 		},
 	}
 }
