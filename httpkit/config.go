@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strconv"
@@ -26,6 +27,7 @@ type Config struct {
 	ReadTimeout     time.Duration
 	WriteTimeout    time.Duration
 	ShutdownTimeout time.Duration
+	ErrorLog        *log.Logger
 	TLS             *tls.Config
 	tlsErr          error
 }
@@ -91,7 +93,7 @@ func (c *Config) Validate() error {
 		return errors.New("shutdown timeout must be greater than 0")
 	}
 
-	if c.TLS != nil && c.tlsErr != nil {
+	if c.tlsErr != nil {
 		return fmt.Errorf("tls must be configured correctly if provided: %w", c.tlsErr)
 	}
 
